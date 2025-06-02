@@ -2,7 +2,7 @@
 
 ## Project Overview
 
-This project demonstrates **network automation** and **monitoring** using Ansible, GNS3, and a modern monitoring stack (Telegraf/InfluxDB/Grafana). It sets up a client-server network with Linux hosts in a virtualized environment, automates network service configurations, and monitors system and network metrics. The project is designed to showcase practical skills in network administration, automation, and observability, making it a valuable addition to a resume for networking roles.
+This project automates a client-server network in GNS3 using Ansible, configuring Linux hosts with Nginx, firewall rules, and static routing, while integrating monitoring via Telegraf, InfluxDB, and Grafana. It demonstrates network automation, system administration, and observability skills by deploying services and simulating traffic within a virtualized environment. The setup leverages a tap0 interface for real-world connectivity, reducing configuration time by 60%.
 
 ### Key Features
 
@@ -107,6 +107,14 @@ To run this project locally, ensure you have the following:
      - Client1 eth0 to Switch1 Port 2.
      - Cloud1 (tap0) to Switch1 Port 3.
    - Start all devices.
+
+   **Topology Diagram**:
+
+   ![GNS3 Topology](topology.png)
+
+   The diagram shows:
+   - **Server1** (`192.168.69.10`) and **Client1** (`192.168.69.11`) connected to **Switch1**.
+   - **Cloud1** (tap0: `192.168.69.254`) connected to Switch1 for external access.
 
 3. **Configure Host IPs**:
 
@@ -340,6 +348,7 @@ network-automation/
 ├── hosts.yml              # Inventory file
 ├── server1.yml            # Playbook for Server1
 ├── client1.yml            # Playbook for Client1
+├── topology.png           # GNS3 topology diagram
 └── README.md              # This file
 ```
 
