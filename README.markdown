@@ -1,4 +1,6 @@
-# Automated Network Configuration and Monitoring Dashboard
+# Visinetra: Network Visibility & Telemetry Automation
+
+A comprehensive network monitoring and automation solution that provides end-to-end visibility into network performance through automated configuration, real-time telemetry collection, and intuitive dashboards. Built with Ansible, GNS3, Telegraf, InfluxDB, and Grafana.
 
 ## Project Overview
 
