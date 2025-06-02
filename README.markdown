@@ -1,10 +1,10 @@
 # Visinetra: Network Visibility & Telemetry Automation
 
-A comprehensive network monitoring and automation solution that provides end-to-end visibility into network performance through automated configuration, real-time telemetry collection, and intuitive dashboards. Built with Ansible, GNS3, Telegraf, InfluxDB, and Grafana.
+A comprehensive network monitoring and automation solution that provides end-to-end visibility into network performance through automated configuration, real-time telemetry collection, and intuitive dashboards.
 
 ## Project Overview
 
-This project automates a client-server network in GNS3 using Ansible, configuring Linux hosts with Nginx, firewall rules, and static routing, while integrating monitoring via Telegraf, InfluxDB, and Grafana. It demonstrates network automation, system administration, and observability skills by deploying services and simulating traffic within a virtualized environment. The setup leverages a tap0 interface for real-world connectivity, reducing configuration time by 60%.
+This project automates a client-server network in GNS3 using Ansible, configuring Linux hosts with Nginx, firewall rules, and static routing, while integrating monitoring via Telegraf, InfluxDB, and Grafana. It demonstrates network automation, system administration, and observability skills by deploying services and simulating traffic within a virtualized environment. The setup leverages a tap0 interface for real-world connectivity.
 
 ### Key Features
 
@@ -13,14 +13,6 @@ This project automates a client-server network in GNS3 using Ansible, configurin
 - **Monitoring**: Telegraf collects system metrics (CPU, memory, network) and SNMP data, sending them to InfluxDB Cloud for visualization in Grafana.
 - **Traffic Simulation**: Client1 generates HTTP traffic to Server1 to simulate network activity.
 - **Static Routing**: Uses a single subnet with static routing, avoiding the complexity of dynamic routing protocols.
-
-### Skills Demonstrated
-
-- **Ansible Automation**: Automating network services, firewall rules, and monitoring configurations.
-- **Network Administration**: Configuring IP addresses, firewall rules, and network services.
-- **Monitoring and Observability**: Using Telegraf, InfluxDB, and Grafana to monitor system and network metrics.
-- **Virtualized Networking**: Building a network in GNS3 with a tap0 interface for external connectivity.
-- **Linux System Administration**: Managing Linux hosts, services, and networking.
 
 ## Prerequisites
 
@@ -32,15 +24,13 @@ To run this project locally, ensure you have the following:
 - **GNS3**: Version 2.2 or later, installed and configured.
 - **Docker**: Installed to run Linux containers in GNS3.
 - **Ansible**: Version 2.9 or later, installed (`sudo apt install ansible`).
-- **Python Packages**:
-  - Install `ansible-pylibssh` for better SSH performance: `pip3 install ansible-pylibssh --user`.
 - **InfluxDB Cloud Account**:
   - Sign up for a free InfluxDB Cloud account at InfluxData.
   - Create a bucket named `visinetra` in the `Dev` organization.
-  - Use the provided token in `server1.yml` or replace it with your own.
+  - Create your own token and use it in `server1.yml`.
 - **Grafana**: Set up Grafana (local or cloud) to visualize InfluxDB data.
-  - Add InfluxDB as a data source in Grafana using the same credentials as in `server1.yml`.
-- **Internet Access**: Ensure your host system has internet access (e.g., via Ethernet `eno1` or Wi-Fi `wlo1`).
+  - Add InfluxDB as a data source in Grafana using the same credentials as in `server1.yml` or create a new one.
+- **Internet Access**: Ensure your host system has internet access (e.g., via Ethernet `eno1` or Wi-Fi `wlo1`) or use ip forwarding to access internet via host.
 
 ### Network Requirements
 
@@ -76,7 +66,7 @@ To run this project locally, ensure you have the following:
 
    - These rules allow the GNS3 subnet (`192.168.69.0/24`) to access the internet via NAT.
 
-3. **Verify tap0 Interface**:
+3. **Add tap0 Interface**:
 
    - Ensure the tap0 interface is configured:
 
@@ -155,7 +145,7 @@ To run this project locally, ensure you have the following:
      passwd root
      ```
 
-     - Use password: `cisco` (or your choice, update `hosts.yml` accordingly).
+     - Use password: `password` (or your choice, update `inventory.yml` accordingly).
 
 5. **Verify Connectivity**:
 
@@ -170,13 +160,13 @@ To run this project locally, ensure you have the following:
    - On your host system:
 
      ```bash
-     mkdir -p ~/code/visinetra/network-automation
-     cd ~/code/visinetra/network-automation
+     mkdir -p ~/code/visinetra
+     cd ~/code/visinetra
      ```
 
-2. **Create** `hosts.yml`:
+2. **Create** `inventory.yml`:
 
-   - File: `hosts.yml`
+   - File: `inventory.yml`
 
      ```yaml
      ---
@@ -185,34 +175,15 @@ To run this project locally, ensure you have the following:
          server1:
            ansible_host: 192.168.69.10
            ansible_user: root
-           ansible_password: cisco
+           ansible_password: password
            ansible_connection: ssh
            ansible_become: no
          client1:
            ansible_host: 192.168.69.11
            ansible_user: root
-           ansible_password: cisco
+           ansible_password: password
            ansible_connection: ssh
            ansible_become: no
-     ```
-
-3. **Create** `ansible.cfg`:
-
-   - File: `ansible.cfg`
-
-     ```ini
-     [defaults]
-     inventory = hosts.yml
-     collections_paths = ~/.ansible/collections
-     
-     [ssh_connection]
-     ssh_args = -o StrictHostKeyChecking=no
-     ```
-
-   - Ensure Ansible uses this config:
-
-     ```bash
-     export ANSIBLE_CONFIG=$(pwd)/ansible.cfg
      ```
 
 4. **Copy Playbooks**:
@@ -242,8 +213,8 @@ To run this project locally, ensure you have the following:
    - From the project directory:
 
      ```bash
-     ansible-playbook -i hosts.yml server1.yml
-     ansible-playbook -i hosts.yml client1.yml
+     ansible-playbook -i inventory.yml server1.yml
+     ansible-playbook -i inventory.yml client1.yml
      ```
 
    - Expected output for `server1.yml`:
@@ -259,19 +230,19 @@ To run this project locally, ensure you have the following:
    - On Client1, manually start the traffic generator to simulate HTTP requests to Server1:
 
      ```bash
-     ssh root@192.168.69.11 'systemctl start traffic-generator'
+     sshpass -p password ssh -o StrictHostKeyChecking=no root@192.168.69.11 "systemctl start traffic-generator"
      ```
 
    - Check status:
 
      ```bash
-     ssh root@192.168.69.11 'systemctl status traffic-generator'
+     sshpass -p password ssh -o StrictHostKeyChecking=no root@192.168.69.11 "systemctl status traffic-generator"
      ```
 
    - Stop when needed:
 
      ```bash
-     ssh root@192.168.69.11 'systemctl stop traffic-generator'
+     sshpass -p password ssh -o StrictHostKeyChecking=no root@192.168.69.11 "systemctl stop traffic-generator"
      ```
 
 ### Step 5: Set Up Monitoring
@@ -284,10 +255,10 @@ To run this project locally, ensure you have the following:
 2. **Grafana**:
 
    - Add InfluxDB as a data source in Grafana:
-     - URL: `https://us-east-1-1.aws.cloud2.influxdata.com`.
+     - URL: `your-influxdb-server-url`.
      - Token: Same as in `server1.yml`.
-     - Organization: `Dev`.
-     - Bucket: `visinetra`.
+     - Organization: `org-name`.
+     - Bucket: `bucket-name`.
    - Create dashboards to visualize:
      - CPU usage (`cpu_usage`).
      - Memory usage (`memory_usage`).
@@ -299,7 +270,7 @@ To run this project locally, ensure you have the following:
    - On Server1, check the Telegraf simulator logs:
 
      ```bash
-     ssh root@192.168.69.10 'cat /var/log/telegraf-simulator/metrics.log'
+     sshpass -p password ssh -o StrictHostKeyChecking=no root@192.168.69.10 'cat /var/log/telegraf-simulator/metrics.log'
      ```
 
    - Look for HTTP response codes (204 indicates successful data sends to InfluxDB).
@@ -334,7 +305,7 @@ To run this project locally, ensure you have the following:
   - Check tap0: `ip addr show tap0`.
 - **Ansible Fails**:
   - Ensure SSH access: `ssh root@192.168.69.10`.
-  - Run with verbose: `ansible-playbook -i hosts.yml server1.yml -v`.
+  - Run with verbose: `ansible-playbook -i inventory.yml server1.yml -v`.
 - **Telegraf Fails to Send Data**:
   - Check DNS: `cat /etc/resolv.conf` on Server1 (should show `8.8.8.8` and `1.1.1.1`).
   - Verify InfluxDB token and bucket settings in `server1.yml`.
@@ -345,9 +316,8 @@ To run this project locally, ensure you have the following:
 ## Project Structure
 
 ```
-network-automation/
-├── ansible.cfg             # Ansible configuration
-├── hosts.yml              # Inventory file
+visinetra/
+├── inventory.yml          # Inventory file
 ├── server1.yml            # Playbook for Server1
 ├── client1.yml            # Playbook for Client1
 ├── topology.png           # GNS3 topology diagram
@@ -357,14 +327,8 @@ network-automation/
 ## Future Enhancements
 
 - Add VLANs to segment the network (e.g., VLAN 10 for the subnet).
-- Implement a DNS server on Server1 using `bind9`.
 - Configure static routes for a multi-subnet setup (e.g., add a second subnet `192.168.70.0/24`).
 - Integrate more advanced monitoring (e.g., HTTP response times, latency).
-
-## Resume Impact
-
-- **Bullet**: “Automated a client-server network on Linux hosts using Ansible in a GNS3 environment, configuring Nginx, firewall rules, and monitoring with Telegraf/InfluxDB/Grafana, reducing setup time by 60%.”
-- **Interview Tip**: “I used Ansible to automate a network in GNS3, managing services and monitoring on Linux hosts, which improved my skills in network automation and observability.”
 
 ## License
 
