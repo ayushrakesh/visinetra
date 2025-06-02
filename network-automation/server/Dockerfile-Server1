@@ -1,0 +1,36 @@
+# Dockerfile for Server1 (Ubuntu-based, excludes Telegraf for Ansible installation)
+FROM ubuntu:24.04
+
+# Set environment variables to avoid interactive prompts
+ENV DEBIAN_FRONTEND=noninteractive
+
+# Install required packages (except Telegraf)
+RUN apt-get update && \
+    apt-get install -y \
+    iproute2 \
+    net-tools \
+    openssh-server \
+    curl \
+    nginx \
+    ufw \
+    snmpd \
+    systemd && \
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/*
+
+# Configure SSH
+RUN mkdir /var/run/sshd && \
+    echo 'root:ansible123' | chpasswd && \
+    sed -i 's/#PermitRootLogin prohibit-password/PermitRootLogin yes/' /etc/ssh/sshd_config && \
+    sed -i 's/#PasswordAuthentication yes/PasswordAuthentication yes/' /etc/ssh/sshd_config
+
+# Enable services
+RUN systemctl enable ssh && \
+    systemctl enable nginx && \
+    systemctl enable snmpd
+
+# Expose ports
+EXPOSE 22 80 161/udp
+
+# Use systemd as entrypoint
+ENTRYPOINT ["/lib/systemd/systemd"]

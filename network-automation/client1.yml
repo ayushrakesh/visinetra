@@ -1,0 +1,73 @@
+- name: Configure Client1
+  hosts: client1
+  tasks:
+    - name: Test Nginx connectivity
+      ansible.builtin.command:
+        cmd: curl http://192.168.69.10
+      register: curl_result
+      
+    - name: Debug curl output
+      ansible.builtin.debug:
+        var: curl_result.stdout
+        
+    # Create a traffic generation script
+    - name: Create traffic generation script
+      ansible.builtin.copy:
+        content: |
+          #!/bin/bash
+          # This script generates HTTP traffic to Server1
+          
+          echo "Starting traffic generation to Server1 (192.168.69.10)"
+          echo "Press Ctrl+C to stop"
+          
+          # Function to make a request and log it
+          make_request() {
+            TIMESTAMP=$(date +"%Y-%m-%d %H:%M:%S")
+            RESPONSE=$(curl -s -o /dev/null -w "%{http_code}" http://192.168.69.10)
+            echo "[$TIMESTAMP] Request sent to Server1 - Response: $RESPONSE"
+          }
+          
+          # Generate continuous traffic
+          while true; do
+            make_request
+            sleep 2  # Wait 2 seconds between requests
+          done
+        dest: /usr/local/bin/generate_traffic.sh
+        mode: '0755'
+      become: yes
+      
+    # Create a systemd service for traffic generation
+    - name: Create traffic generation service
+      ansible.builtin.copy:
+        content: |
+          [Unit]
+          Description=HTTP Traffic Generator
+          After=network.target
+          
+          [Service]
+          Type=simple
+          ExecStart=/usr/local/bin/generate_traffic.sh
+          Restart=always
+          RestartSec=5
+          
+          [Install]
+          WantedBy=multi-user.target
+        dest: /etc/systemd/system/traffic-generator.service
+        mode: '0644'
+      become: yes
+      
+    # Enable but don't start the traffic generator service
+    # This allows you to manually start it when needed
+    - name: Enable traffic generator service
+      ansible.builtin.systemd:
+        name: traffic-generator
+        enabled: yes
+        daemon_reload: yes
+      become: yes
+      
+    - name: Show how to start and stop traffic generation
+      ansible.builtin.debug:
+        msg: 
+          - "To start traffic generation: ssh root@192.168.69.11 'systemctl start traffic-generator'"
+          - "To stop traffic generation: ssh root@192.168.69.11 'systemctl stop traffic-generator'"
+          - "To check status: ssh root@192.168.69.11 'systemctl status traffic-generator'"

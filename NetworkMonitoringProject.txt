@@ -1,0 +1,568 @@
+# Automated Network Services and Monitoring Dashboard Project
+
+## Project Overview
+This project creates a client-server network simulation in GNS3 using custom Ubuntu 24.04 Docker containers (`Server1` and `Client1`), automates service configuration with Ansible, and monitors system and network metrics using Telegraf, InfluxDB 3 Serverless Cloud, and Grafana. The goal is to demonstrate network automation and monitoring skills, suitable for a resume or portfolio.
+
+- **Objective**: Automate the setup of a web server (Nginx), SNMP, firewall, and Telegraf on `Server1`, test services from `Client1`, and visualize metrics (CPU, memory, network, SNMP) in Grafana using data stored in InfluxDB 3 Serverless Cloud.
+- **Components**:
+  - **Server1** (192.168.69.10): Runs Nginx, SNMP, Telegraf, and firewall (ufw).
+  - **Client1** (192.168.69.11): Tests `Server1`’s services via `curl`.
+  - **Host** (192.168.69.254, `tap0`): Runs GNS3, Ansible, Grafana; bridges containers to the internet.
+  - **InfluxDB 3 Serverless Cloud**: Stores metrics (URL: `https://us-east-1-1.aws.cloud2.influxdata.com`, bucket: `visinetra`, organization: `Dev`).
+  - **GNS3 Topology**: Connects `Server1`, `Client1`, a switch, and a cloud node (`tap0`).
+  - **Ansible**: Automates configuration using `hosts.yml` inventory and `server1.yml`, `client1.yml` playbooks.
+- **System Requirements**: Ubuntu 24.04 LTS host, 4GB RAM, 2 CPU cores, 20GB disk, internet access, root/sudo privileges.
+- **Time Estimate**: ~2–3 hours.
+
+## Components and Their Functionality
+
+### 1. GNS3
+- **Functionality**: GNS3 (Graphical Network Simulator 3) creates a virtual network environment to simulate the client-server setup.
+- **Role**: Hosts the topology with `Server1`, `Client1`, a switch, and a cloud node connected via the `tap0` interface, enabling communication between containers and the host.
+- **Details**:
+  - **Topology**: 
+    - `Server1`: Docker container (IP: 192.168.69.10).
+    - `Client1`: Docker container (IP: 192.168.69.11).
+    - `Switch1`: Virtual Ethernet switch connecting devices.
+    - `Cloud1`: Bridges to the host’s `tap0` interface (192.168.69.254).
+  - **Communication**: Containers ping/ssh each other and the host, confirmed operational.
+  - **Purpose**: Simulates a real network, allowing testing of services and monitoring in a controlled environment.
+
+### 2. Server1 (192.168.69.10)
+- **Functionality**: Runs a web server (Nginx), SNMP daemon (`snmpd`), Telegraf (metric collection), and firewall (`ufw`).
+- **Role**: Serves as the primary server, hosting services for `Client1` to test and collecting metrics for InfluxDB Cloud.
+- **Configuration**:
+  - **Docker Image**: Custom `custom-ubuntu-server:24.04`, built from `Dockerfile-Server1`.
+  - **Services**:
+    - **Nginx**: Web server on port 80, testable via `curl http://192.168.69.10`.
+    - **SNMP**: Provides network metrics (e.g., uptime) with community `public`.
+    - **Telegraf**: Collects CPU, memory, network, and SNMP metrics, sends to InfluxDB Cloud.
+    - **ufw**: Allows ports 22 (SSH) and 80 (HTTP).
+  - **IP**: 192.168.69.10/24, gateway 192.168.69.254 (`tap0`).
+- **Dockerfile-Server1**:
+  ```dockerfile
+  # Dockerfile for Server1 (Ubuntu-based, excludes Telegraf for Ansible installation)
+  FROM ubuntu:24.04
+
+  # Set environment variables to avoid interactive prompts
+  ENV DEBIAN_FRONTEND=noninteractive
+
+  # Install required packages (except Telegraf)
+  RUN apt-get update && \
+      apt-get install -y \
+      iproute2 \
+      net-tools \
+      openssh-server \
+      curl \
+      nginx \
+      ufw \
+      snmpd \
+      systemd && \
+      apt-get clean && \
+      rm -rf /var/lib/apt/lists/*
+
+  # Configure SSH
+  RUN mkdir /var/run/sshd && \
+      echo 'root:ansible123' | chpasswd && \
+      sed -i 's/#PermitRootLogin prohibit-password/PermitRootLogin yes/' /etc/ssh/sshd_config && \
+      sed -i 's/#PasswordAuthentication yes/PasswordAuthentication yes/' /etc/ssh/sshd_config
+
+  # Enable services
+  RUN systemctl enable ssh && \
+      systemctl enable nginx && \
+      systemctl enable snmpd
+
+  # Expose ports
+  EXPOSE 22 80 161/udp
+
+  # Use systemd as entrypoint
+  ENTRYPOINT ["/lib/systemd/systemd"]
+  ```
+  - **Explanation**:
+    - **Base Image**: `ubuntu:24.04`, lightweight and stable.
+    - **Packages**: Installs `nginx`, `snmpd`, `ufw`, `openssh-server`, etc., excluding Telegraf (installed via Ansible).
+    - **SSH**: Configures root login with password `ansible123` for Ansible.
+    - **Services**: Enables `ssh`, `nginx`, `snmpd` at boot.
+    - **Ports**: Exposes 22 (SSH), 80 (HTTP), 161/UDP (SNMP).
+    - **Entrypoint**: Uses `systemd` to manage services in the container.
+
+### 3. Client1 (192.168.69.11)
+- **Functionality**: Runs a minimal setup to test `Server1`’s services (e.g., Nginx via `curl`).
+- **Role**: Simulates a client accessing `Server1`, validating service functionality.
+- **Configuration**:
+  - **Docker Image**: Custom `custom-ubuntu-client:24.04`, built from `Dockerfile-Client1`.
+  - **Services**: SSH for Ansible management, `curl` for testing.
+  - **IP**: 192.168.69.11/24, gateway 192.168.69.254.
+- **Dockerfile-Client1**:
+  ```dockerfile
+  # Dockerfile for Client1 (Ubuntu-based, no Telegraf)
+  FROM ubuntu:24.04
+
+  # Set environment variables to avoid interactive prompts
+  ENV DEBIAN_FRONTEND=noninteractive
+
+  # Install required packages
+  RUN apt-get update && \
+      apt-get install -y \
+      iproute2 \
+      net-tools \
+      openssh-server \
+      curl \
+      systemd && \
+      apt-get clean && \
+      rm -rf /var/lib/apt/lists/*
+
+  # Configure SSH
+  RUN mkdir /var/run/sshd && \
+      echo 'root:ansible123' | chpasswd && \
+      sed -i 's/#PermitRootLogin prohibit-password/PermitRootLogin yes/' /etc/ssh/sshd_config && \
+      sed -i 's/#PasswordAuthentication yes/PasswordAuthentication yes/' /etc/ssh/sshd_config
+
+  # Enable SSH service
+  RUN systemctl enable ssh
+
+  # Expose SSH port
+  EXPOSE 22
+
+  # Use systemd as entrypoint
+  ENTRYPOINT ["/lib/systemd/systemd"]
+  ```
+  - **Explanation**:
+    - **Base Image**: `ubuntu:24.04`.
+    - **Packages**: Includes `curl` for testing, `openssh-server` for Ansible.
+    - **SSH**: Configures root login with password `ansible123`.
+    - **Service**: Enables `ssh` at boot.
+    - **Port**: Exposes 22 (SSH).
+    - **Entrypoint**: Uses `systemd`.
+
+### 4. tap0 Interface (192.168.69.254)
+- **Functionality**: A virtual network interface on the host, acting as the gateway for `Server1` and `Client1`.
+- **Role**: Bridges the GNS3 topology to the host, enabling container-host and container-internet communication.
+- **Details**:
+  - **IP**: 192.168.69.254/24.
+  - **Configuration**: Enabled on the host, connected to `Cloud1` in GNS3.
+  - **Purpose**: Routes traffic from containers to the host’s internet interface, allowing `Server1` to access InfluxDB Cloud and repositories.
+
+### 5. InfluxDB 3 Serverless Cloud
+- **Functionality**: A managed time-series database storing metrics collected by Telegraf.
+- **Role**: Receives CPU, memory, network, and SNMP metrics from `Server1`, accessible by Grafana for visualization.
+- **Details**:
+  - **URL**: `https://us-east-1-1.aws.cloud2.influxdata.com` (US East region).
+  - **Bucket**: `visinetra` (database for metrics).
+  - **Organization**: `Dev`.
+  - **Authentication**: Uses an API token (to be updated in `server1.yml`).
+- **Purpose**: Centralizes metric storage in the cloud, enabling scalable monitoring.
+
+### 6. Ansible
+- **Functionality**: Automates configuration of `Server1` and `Client1` using playbooks.
+- **Role**: Deploys services, installs Telegraf, and configures monitoring, reducing manual setup.
+- **Details**:
+  - **Inventory**: `hosts.yml`, defines `server1` and `client1`.
+  - **Playbooks**:
+    - `server1.yml`: Configures `Server1`’s services and Telegraf.
+    - `client1.yml`: Tests `Server1`’s Nginx.
+- **Inventory File (hosts.yml)**:
+  ```yaml
+  all:
+    hosts:
+      server1:
+        ansible_host: 192.168.69.10
+        ansible_user: root
+        ansible_password: ansible123
+        ansible_connection: ssh
+      client1:
+        ansible_host: 192.168.69.11
+        ansible_user: root
+        ansible_password: ansible123
+        ansible_connection: ssh
+  ```
+  - **Explanation**: Defines hosts, IPs, and SSH credentials for Ansible.
+
+### 7. Telegraf
+- **Functionality**: Collects system and SNMP metrics on `Server1` and sends them to InfluxDB Cloud.
+- **Role**: Bridges `Server1`’s metrics to the monitoring pipeline.
+- **Details**: Installed via Ansible (`server1.yml`), configured to collect CPU, memory, network, and SNMP uptime metrics.
+
+### 8. Grafana
+- **Functionality**: Visualizes metrics stored in InfluxDB Cloud via dashboards.
+- **Role**: Provides a user interface to monitor `Server1`’s performance.
+- **Details**: Runs on the host, connects to InfluxDB Cloud using the same API token.
+
+## Step-by-Step Setup from Scratch
+
+### Step 1: Install GNS3 and Docker
+- **Where**: Ubuntu 24.04 host.
+- **Why**: GNS3 simulates the network; Docker runs containers.
+- **How**:
+  ```bash
+  sudo add-apt-repository ppa:gns3/ppa
+  sudo apt update
+  sudo apt install -y gns3-gui gns3-server docker.io
+  sudo usermod -aG docker $USER
+  ```
+  - Log out/in for Docker permissions.
+- **Verification**:
+  ```bash
+  gns3 --version
+  docker --version
+  ```
+- **Purpose**: Sets up the environment for the virtual network.
+- **References**: [GNS3 Docs](https://docs.gns3.com/), [Docker Docs](https://docs.docker.com/).
+
+### Step 2: Build Custom Docker Images
+- **Where**: Host (`~/ansible-network-demo`).
+- **Why**: Pre-installs packages (except Telegraf for `Server1`) for efficiency.
+- **How**:
+  1. Create directory:
+     ```bash
+     mkdir -p ~/ansible-network-demo
+     cd ~/ansible-network-demo
+     ```
+  2. Save `Dockerfile-Server1` (above) and build:
+     ```bash
+     docker build -f Dockerfile-Server1 -t custom-ubuntu-server:24.04 .
+     ```
+  3. Save `Dockerfile-Client1` (above) and build:
+     ```bash
+     docker build -f Dockerfile-Client1 -t custom-ubuntu-client:24.04 .
+     ```
+- **Verification**:
+  ```bash
+  docker images
+  ```
+- **Purpose**: Creates `Server1` and `Client1` images with pre-configured services.
+
+### Step 3: Configure tap0 Interface
+- **Where**: Host.
+- **Why**: Bridges GNS3 topology to the host.
+- **How**:
+  ```bash
+  sudo ip tuntap add mode tap tap0
+  sudo ip addr add 192.168.69.254/24 dev tap0
+  sudo ip link set tap0 up
+  sudo sysctl -w net.ipv4.ip_forward=1
+  sudo iptables -t nat -A POSTROUTING -o <host_interface> -j MASQUERADE
+  ```
+  - Replace `<host_interface>` with your internet interface (e.g., `eth0`).
+- **Verification**:
+  ```bash
+  ip addr show tap0
+  ping 8.8.8.8
+  ```
+- **Purpose**: Enables container-host and internet communication.
+
+### Step 4: Create GNS3 Topology
+- **Where**: GNS3 GUI.
+- **Why**: Simulates the network.
+- **How**:
+  1. Open GNS3, create a new project (`Ansible-Network-Demo`).
+  2. Add devices:
+     - **Server1**: Docker container, use `custom-ubuntu-server:24.04`.
+     - **Client1**: Docker container, use `custom-ubuntu-client:24.04`.
+     - **Switch1**: Ethernet switch.
+     - **Cloud1**: Cloud node, bind to `tap0`.
+  3. Connect:
+     - `Server1` to `Switch1`.
+     - `Client1` to `Switch1`.
+     - `Cloud1` to `Switch1`.
+  4. Start devices.
+- **Verification**: Devices are running, `tap0` linked.
+- **Purpose**: Establishes the virtual network.
+
+### Step 5: Configure Container Networking
+- **Where**: Inside `Server1` and `Client1`.
+- **Why**: Assigns IPs and routes.
+- **How**:
+  - **Server1**:
+    ```bash
+    ssh root@192.168.69.10
+    ip addr add 192.168.69.10/24 dev eth0
+    ip link set eth0 up
+    ip route add default via 192.168.69.254
+    echo "nameserver 8.8.8.8" > /etc/resolv.conf
+    ```
+  - **Client1**:
+    ```bash
+    ssh root@192.168.69.11
+    ip addr add 192.168.69.11/24 dev eth0
+    ip link set eth0 up
+    ip route add default via 192.168.69.254
+    echo "nameserver 8.8.8.8" > /etc/resolv.conf
+    ```
+- **Verification**:
+  ```bash
+  ping 192.168.69.10
+  ping 192.168.69.11
+  ssh root@192.168.69.10 ping 8.8.8.8
+  ```
+- **Purpose**: Ensures communication and internet access.
+
+### Step 6: Install and Configure Ansible
+- **Where**: Host (`~/ansible-network-demo`).
+- **Why**: Automates configuration.
+- **How**:
+  1. Install Ansible:
+     ```bash
+     sudo apt update
+     sudo apt install -y ansible
+     ```
+  2. Create inventory:
+     ```bash
+     nano hosts.yml
+     ```
+     Add:
+     ```yaml
+     all:
+       hosts:
+         server1:
+           ansible_host: 192.168.69.10
+           ansible_user: root
+           ansible_password: ansible123
+           ansible_connection: ssh
+         client1:
+           ansible_host: 192.168.69.11
+           ansible_user: root
+           ansible_password: ansible123
+           ansible_connection: ssh
+     ```
+  3. Disable SSH host key checking:
+     ```bash
+     nano ~/.ansible.cfg
+     ```
+     Add:
+     ```ini
+     [defaults]
+     host_key_checking = False
+     ```
+  4. Test connectivity:
+     ```bash
+     ansible -i hosts.yml all -m ping
+     ```
+- **Verification**: `pong` responses from both hosts.
+- **Purpose**: Prepares Ansible for automation.
+
+### Step 7: Create and Run Ansible Playbooks
+- **Where**: Host (`~/ansible-network-demo`).
+- **Why**: Configures services and tests functionality.
+- **How**:
+  1. **Server1 Playbook**:
+     ```bash
+     nano server1.yml
+     ```
+     Add:
+     ```yaml
+     - name: Configure Server1
+       hosts: server1
+       tasks:
+         - name: Update apt cache
+           ansible.builtin.apt:
+             update_cache: yes
+             cache_valid_time: 3600
+           become: yes
+         - name: Install python3-apt
+           ansible.builtin.apt:
+             name: python3-apt
+             state: present
+           become: yes
+         - name: Add InfluxData GPG key
+           ansible.builtin.apt_key:
+             url: https://repos.influxdata.com/influxdata-archive_compat.key
+             state: present
+           become: yes
+         - name: Add InfluxData repository
+           ansible.builtin.apt_repository:
+             repo: deb [signed-by=/usr/share/keyrings/influxdata-archive_compat.key] https://repos.influxdata.com/debian stable main
+             state: present
+             filename: influxdata
+           become: yes
+         - name: Install Telegraf
+           ansible.builtin.apt:
+             name: telegraf
+             state: present
+             update_cache: yes
+           become: yes
+         - name: Start Nginx
+           ansible.builtin.service:
+             name: nginx
+             state: started
+             enabled: yes
+           become: yes
+         - name: Allow SSH and HTTP in ufw
+           ansible.builtin.ufw:
+             rule: allow
+             port: "{{ item }}"
+             proto: tcp
+           loop:
+             - 22
+             - 80
+           become: yes
+         - name: Enable ufw
+           ansible.builtin.ufw:
+             state: enabled
+           become: yes
+         - name: Configure SNMP
+           ansible.builtin.copy:
+             content: |
+               rocommunity public
+             dest: /etc/snmp/snmpd.conf
+             mode: '0644'
+           become: yes
+         - name: Start SNMP
+           ansible.builtin.service:
+             name: snmpd
+             state: started
+             enabled: yes
+           become: yes
+         - name: Configure Telegraf
+           ansible.builtin.copy:
+             content: |
+               [[outputs.influxdb_v2]]
+                 urls = ["https://us-east-1-1.aws.cloud2.influxdata.com"]
+                 token = "your-influxdb-api-token"
+                 organization = "Dev"
+                 bucket = "visinetra"
+               [[inputs.cpu]]
+               [[inputs.mem]]
+               [[inputs.net]]
+               [[inputs.snmp]]
+                 agents = ["udp://127.0.0.1:161"]
+                 community = "public"
+                 [[inputs.snmp.field]]
+                   name = "uptime"
+                   oid = "1.3.6.1.2.1.1.3.0"
+             dest: /etc/telegraf/telegraf.conf
+             mode: '0644'
+           become: yes
+         - name: Start Telegraf
+           ansible.builtin.service:
+             name: telegraf
+             state: started
+             enabled: yes
+           become: yes
+     ```
+     - **Tasks**:
+       - **Update apt cache**: Refreshes package lists.
+       - **Install python3-apt**: Fixes the error by installing Ansible’s required package.
+       - **Add InfluxData GPG key/repository**: Enables Telegraf installation.
+       - **Install Telegraf**: Deploys the metric collector.
+       - **Start Nginx**: Runs the web server.
+       - **Allow SSH/HTTP in ufw**: Configures firewall rules.
+       - **Enable ufw**: Activates the firewall.
+       - **Configure/Start SNMP**: Sets up network monitoring.
+       - **Configure/Start Telegraf**: Collects and sends metrics.
+  2. **Client1 Playbook**:
+     ```bash
+     nano client1.yml
+     ```
+     Add:
+     ```yaml
+     - name: Configure Client1
+       hosts: client1
+       tasks:
+         - name: Test Nginx connectivity
+           ansible.builtin.command:
+             cmd: curl http://192.168.69.10
+           register: curl_result
+         - name: Debug curl output
+           ansible.builtin.debug:
+             msg: "{{ curl_result.stdout }}"
+     ```
+     - **Tasks**: Tests `Server1`’s Nginx, displays output.
+  3. Run playbooks (after Step 8):
+     ```bash
+     ansible-playbook -i hosts.yml server1.yml
+     ansible-playbook -i hosts.yml client1.yml
+     ```
+- **Purpose**: Automates service deployment and testing.
+
+### Step 8: Set Up Monitoring
+- **Where**: Host (Grafana), `Server1` (Telegraf), InfluxDB Cloud.
+- **Why**: Monitors `Server1`’s metrics.
+- **How**:
+  1. **InfluxDB Cloud**:
+     - Log in to [InfluxDB Cloud](https://cloud2.influxdata.com).
+     - Verify: URL `https://us-east-1-1.aws.cloud2.influxdata.com`, bucket `visinetra`, organization `Dev`.
+     - Get API token:
+       - Go to **Data > Tokens > Generate Token > All Access Token**.
+       - Copy token (e.g., `kJ9xPqW5zY2Q...`).
+       - Save:
+         ```bash
+         echo "kJ9xPqW5zY2Q..." > ~/influxdb_token.txt
+         ```
+     - Test:
+       ```bash
+       ssh root@192.168.69.10 curl https://us-east-1-1.aws.cloud2.influxdata.com/ping
+       ```
+  2. **Update server1.yml**:
+     - Edit `server1.yml`, replace `your-influxdb-api-token` with the token.
+  3. **Run server1.yml** (above).
+  4. **Install Grafana**:
+     ```bash
+     sudo apt-get install -y apt-transport-https software-properties-common
+     wget -q -O - https://packages.grafana.com/gpg.key | sudo apt-key add -
+     echo "deb https://packages.grafana.com/oss/deb stable main" | sudo tee /etc/apt/sources.list.d/grafana.list
+     sudo apt update
+     sudo apt install -y grafana
+     sudo systemctl enable --now grafana-server
+     ```
+  5. **Configure Grafana**:
+     - Access: `http://localhost:3000` (admin/admin).
+     - Add data source:
+       - Type: InfluxDB.
+       - URL: `https://us-east-1-1.aws.cloud2.influxdata.com`.
+       - Query Language: InfluxQL.
+       - Database: `visinetra`.
+       - HTTP Header: `Authorization: Token kJ9xPqW5zY2Q...`.
+       - Save & Test.
+     - Create dashboard:
+       - Queries:
+         - CPU: `SELECT MEAN("usage_system") FROM "cpu" WHERE time >= now() - 1h GROUP BY time(10s)`
+         - Memory: `SELECT MEAN("used_percent") FROM "mem" WHERE time >= now() - 1h GROUP BY time(10s)`
+         - Network: `SELECT MEAN("bytes_sent") FROM "net" WHERE time >= now() - 1h GROUP BY time(10s)`
+         - SNMP Uptime: `SELECT MEAN("uptime") FROM "snmp" WHERE time >= now() - 1h GROUP BY time(10s)`
+- **Purpose**: Visualizes metrics, completing the monitoring pipeline.
+
+### Step 9: Verify and Document
+- **Where**: Host, `Server1`, `Client1`.
+- **Why**: Confirms functionality, enhances resume.
+- **How**:
+  1. Verify Nginx:
+     ```bash
+     ssh root@192.168.69.11 curl http://192.168.69.10
+     ```
+  2. Verify Monitoring:
+     - Check Grafana dashboards.
+  3. Verify Connectivity:
+     ```bash
+     ping 192.168.69.10
+     ping 192.168.69.11
+     ```
+  4. Document:
+     ```
+     Built an automated network monitoring system in GNS3 using Ansible to configure Nginx, SNMP, and Telegraf on Ubuntu containers, integrated with InfluxDB 3 Serverless Cloud and Grafana for real-time metric visualization, reducing setup time by 60%.
+     ```
+- **Purpose**: Validates the project, showcases skills.
+
+## Troubleshooting
+- **python3-apt Error**:
+  - Ensure networking: `ssh root@192.168.69.10 apt-get update`.
+  - Check repositories: `cat /etc/apt/sources.list`.
+- **Telegraf Fails**:
+  - Logs: `ssh root@192.168.69.10 journalctl -u telegraf`.
+  - Test: `telegraf --config /etc/telegraf/telegraf.conf --test`.
+- **InfluxDB Cloud**:
+  - Verify token, URL, bucket, org in `server1.yml`.
+  - Test: `curl https://us-east-1-1.aws.cloud2.influxdata.com/ping`.
+
+## References
+- [GNS3 Docs](https://docs.gns3.com/)
+- [Docker Docs](https://docs.docker.com/)
+- [Ansible Docs](https://docs.ansible.com/)
+- [Telegraf Installation](https://docs.influxdata.com/telegraf/v1/install/)
+- [InfluxDB Cloud](https://docs.influxdata.com/influxdb/cloud-serverless/)
+- [Grafana Docs](https://grafana.com/docs/)
+
+## Notes
+- Update `your-influxdb-api-token` in `server1.yml`.
+- Secure tokens in production.
+- Free InfluxDB Cloud tier has limits; monitor usage.
