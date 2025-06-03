@@ -315,11 +315,20 @@ To run this project locally, ensure you have the following:
 
 ```
 visinetra/
-├── inventory.yml          # Inventory file
-├── server1.yml            # Playbook for Server1
-├── client1.yml            # Playbook for Client1
-├── topology.png           # GNS3 topology diagram
-└── README.md              # This file
+├── influxdb/
+│   ├── grafana-token.token       # Grafana token file
+│   └── telegraf-token.token      # Telegraf token file
+├── resources/
+│   ├── commands.txt              # List of commands
+│   └── tun-tap.html              # TUN/TAP explanation HTML
+├── .gitignore                    # Git ignore rules
+├── Dockerfile-Client1           # Dockerfile for Client1
+├── Dockerfile-Server1           # Dockerfile for Server1
+├── README.markdown              # Project README
+├── client1.yml                  # Ansible playbook for Client1
+├── inventory.yml                # Inventory file
+├── server1.yml                  # Ansible playbook for Server1
+└── topology.png                 # GNS3 topology diagram
 ```
 
 ## Future Enhancements
