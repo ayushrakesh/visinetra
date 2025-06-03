@@ -318,9 +318,6 @@ visinetra/
 ├── influxdb/
 │   ├── grafana-token.token       # Grafana token file
 │   └── telegraf-token.token      # Telegraf token file
-├── resources/
-│   ├── commands.txt              # List of commands
-│   └── tun-tap.html              # TUN/TAP explanation HTML
 ├── .gitignore                    # Git ignore rules
 ├── Dockerfile-Client1           # Dockerfile for Client1
 ├── Dockerfile-Server1           # Dockerfile for Server1
