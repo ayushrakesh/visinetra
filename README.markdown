@@ -149,8 +149,8 @@ To run this project locally, ensure you have the following:
 
 5. **Verify Connectivity**:
 
-   - From Server1: `ping 192.168.69.254`.
-   - From Client1: `ping 192.168.69.10`.
+   - From Server1: `ping 192.168.69.11` and `ping 192.168.69.254`.
+   - From Client1: `ping 192.168.69.10` and `ping 192.168.69.254`.
    - From host system: `ssh root@192.168.69.10` and `ssh root@192.168.69.11`.
 
 ### Step 3: Set Up Ansible
@@ -177,13 +177,11 @@ To run this project locally, ensure you have the following:
            ansible_user: root
            ansible_password: password
            ansible_connection: ssh
-           ansible_become: no
          client1:
            ansible_host: 192.168.69.11
            ansible_user: root
            ansible_password: password
            ansible_connection: ssh
-           ansible_become: no
      ```
 
 4. **Copy Playbooks**:
@@ -257,8 +255,8 @@ To run this project locally, ensure you have the following:
    - Add InfluxDB as a data source in Grafana:
      - URL: `your-influxdb-server-url`.
      - Token: Same as in `server1.yml`.
-     - Organization: `org-name`.
-     - Bucket: `bucket-name`.
+     - Organization: `Dev`.
+     - Bucket: `visinetra`.
    - Create dashboards to visualize:
      - CPU usage (`cpu_usage`).
      - Memory usage (`memory_usage`).
